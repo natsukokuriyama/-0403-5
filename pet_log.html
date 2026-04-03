@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Black Cat Health Log v7.1</title>
+    <style>
+        :root {
+            --main-bg: #121212;
+            --card-bg: #1e1e1e;
+            --accent-color: #ffcc00; 
+            --text-color: #e0e0e0;
+            --border-radius: 16px;
+        }
+
+        body {
+            font-family: 'Hiragino Kaku Gothic ProN', sans-serif;
+            background-color: var(--main-bg);
+            color: var(--text-color);
+            margin: 0;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container { width: 100%; max-width: 600px; }
+
+        header { text-align: center; margin-bottom: 20px; }
+        .cat-icon { font-size: 40px; }
+        h1 { font-size: 1.2rem; color: var(--accent-color); margin: 5px 0; }
+
+        .card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: var(--border-radius);
+            margin-bottom: 20px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            border: 1px solid #333;
+        }
+
+        h2 { font-size: 1rem; border-left: 4px solid var(--accent-color); padding-left: 10px; margin: 0 0 15px; }
+        label { display: block; margin: 10px 0 5px; font-size: 0.85rem; color: #bbb; }
+
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            background: #2a2a2a;
+            color: #fff;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            border-radius: 8px;
+            border: none;
+            background: var(--accent-color);
+            color: #000;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 5px;
+        }
+
+        .history-list { display: flex; flex-direction: column; gap: 12px; }
+        .day-group {
+            background: #252525;
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid #333;
+        }
+        .day-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #444;
+            padding-bottom: 8px;
+            margin-bottom: 8px;
+        }
+        .day-date { font-weight: bold; color: var(--accent-color); }
+        .day-total { font-size: 0.8rem; color: #aaa; }
+
+        .entry-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            font-size: 0.85rem;
+            border-bottom: 1px dotted #444;
+        }
+        .entry-info { flex: 1; margin-right: 10px; }
+        .entry-actions { display: flex; gap: 5px; }
+
+        .btn-edit { background: #444; color: #ffcc00; padding: 4px 8px; font-size: 0.7rem; border-radius: 4px; border: 1px solid #ffcc00; cursor: pointer; }
+        .btn-delete { background: #511; color: #f66; padding: 4px 8px; font-size: 0.7rem; border-radius: 4px; border: 1px solid #f66; cursor: pointer; }
+        
+        .gcal-btn {
+            display: block;
+            background: #4285F4;
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            text-decoration: none;
+            text-align: center;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        .today-row { border-color: var(--accent-color); background: #1e1e0a; }
+        .edit-active { border: 2px solid var(--accent-color); background: #2d2d00; }
+    </style>
+</head>
+<body>
+
+<div class="container" id="top">
+    <header>
+        <div class="cat-icon">🐈‍⬛</div>
+        <h1>Black Cat Health Log</h1>
+    </header>
+
+    <div class="card" id="inputCard">
+        <h2 id="formTitle">📝 記録入力</h2>
+        <label>日時を選択</label>
+        <input type="datetime-local" id="recordDateTime">
+        
+        <label>ごはんの内容（うんち記録時は無視されます）</label>
+        <select id="foodSelect"></select>
+        
+        <label>量 (g または 袋数 / 0.5刻み)</label>
+        <input type="number" id="amount" step="0.5" min="0" placeholder="例: 1.5">
+        
+        <label>💩 うんちの長さ (cm)</label>
+        <input type="number" id="poopLength" placeholder="例: 8">
+        
+        <button id="saveBtn" onclick="saveRecord()">この内容で保存する</button>
+        <button id="cancelBtn" onclick="cancelEdit()" style="display:none; background:#555; color:#fff; margin-top:10px;">編集をキャンセル</button>
+    </div>
+
+    <div class="card">
+        <h2>📅 履歴 (最新31日分)</h2>
+        <div id="historyList" class="history-list"></div>
+    </div>
+
+    <div class="card">
+        <h2>🍔 フード・おやつ登録</h2>
+        <input type="text" id="foodName" placeholder="例: プレミアム黒猫フード">
+        <label>100g または 1袋あたりのkcal</label>
+        <input type="number" id="foodCal" placeholder="例: 75">
+        <select id="foodType">
+            <option value="per100g">100gあたりの計算</option>
+            <option value="perUnit">1袋あたりの計算</option>
+        </select>
+        <button style="background: #444; color: #fff;" onclick="saveFoodMaster()">マスターに追加</button>
+    </div>
+
+    <div class="card" style="opacity: 0.8; font-size: 0.8rem;">
+        <h2>⚙️ 設定</h2>
+        <label>連携用Googleメールアドレス</label>
+        <input type="email" id="googleEmail" placeholder="example@gmail.com" onchange="saveSettings()">
+        <button onclick="emergencyReset()" style="background:#333; color:#f66; font-size:0.7rem; margin-top:20px; padding:5px;">⚠️ データを初期化する</button>
+    </div>
+</div>
+
+<script>
+    let foodMaster = [];
+    let healthLogs = [];
+    let userSettings = { email: '' };
+    let editingIndex = -1;
+
+    // 安全にデータを読み込む
+    function loadData() {
+        try {
+            foodMaster = JSON.parse(localStorage.getItem('foodMaster')) || [];
+            healthLogs = JSON.parse(localStorage.getItem('healthLogs')) || [];
+            userSettings = JSON.parse(localStorage.getItem('userSettings')) || { email: '' };
+        } catch (e) {
+            console.error("Data load failed", e);
+            foodMaster = []; healthLogs = [];
+        }
+    }
+
+    function init() {
+        loadData();
+        if(editingIndex === -1) setCurrentDateTime();
+        const emailEl = document.getElementById('googleEmail');
+        if(emailEl) emailEl.value = userSettings.email || '';
+        updateFoodSelect();
+        renderHistory();
+    }
+
+    function setCurrentDateTime() {
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const hh = String(now.getHours()).padStart(2, '0');
+        const min = String(now.getMinutes()).padStart(2, '0');
+        const el = document.getElementById('recordDateTime');
+        if(el) el.value = `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+    }
+
+    function saveSettings() {
+        userSettings.email = document.getElementById('googleEmail').value;
+        localStorage.setItem('userSettings', JSON.stringify(userSettings));
+    }
+
+    function saveFoodMaster() {
+        const name = document.getElementById('foodName').value;
+        const cal = parseFloat(document.getElementById('foodCal').value);
+        const type = document.getElementById('foodType').value;
+        if(!name || isNaN(cal)) return alert('正しい値を入力してください');
+        foodMaster.push({ name, cal, type });
+        localStorage.setItem('foodMaster', JSON.stringify(foodMaster));
+        updateFoodSelect();
+        alert('マスターに登録しました');
+    }
+
+    function updateFoodSelect() {
+        const select = document.getElementById('foodSelect');
+        if(!select) return;
+        select.innerHTML = foodMaster.map((f, i) => `<option value="${i}">${f.name}</option>`).join('');
+    }
+
+    function saveRecord() {
+        const dtStr = document.getElementById('recordDateTime').value;
+        if(!dtStr) return alert('日時を選択してください');
+        
+        const parts = dtStr.split('T');
+        const dateStr = parts[0];
+        const timeStr = parts[1] || "00:00";
+        const foodIdx = document.getElementById('foodSelect').value;
+        const amount = parseFloat(document.getElementById('amount').value) || 0;
+        const poop = parseFloat(document.getElementById('poopLength').value) || 0;
+
+        let calResult = 0;
+        let detail = "";
+        let finalFoodIdx = -1;
+        let finalAmount = 0;
+
+        if (poop > 0) {
+            detail = `💩 うんち記録 (${poop}cm)`;
+        } else if (amount > 0) {
+            const food = foodMaster[foodIdx];
+            if(food) {
+                const unitLabel = food.type === 'per100g' ? 'g' : '袋';
+                calResult = food.type === 'per100g' ? (food.cal * amount / 100) : (food.cal * amount);
+                detail = `🍴 ${food.name} ${amount}${unitLabel}`;
+                finalFoodIdx = foodIdx;
+                finalAmount = amount;
+            } else {
+                return alert('フードを選択してください');
+            }
+        } else {
+            return alert('量、またはうんちの長さを入力してください');
+        }
+
+        const newLog = {
+            date: dateStr,
+            time: timeStr,
+            kcal: calResult,
+            poop: poop,
+            detail: detail,
+            amount: finalAmount,
+            foodIdx: finalFoodIdx
+        };
+
+        if(editingIndex > -1) {
+            healthLogs[editingIndex] = newLog;
+            editingIndex = -1;
+        } else {
+            healthLogs.push(newLog);
+        }
+
+        localStorage.setItem('healthLogs', JSON.stringify(healthLogs));
+        resetForm();
+        renderHistory();
+        alert('保存しました');
+    }
+
+    function editRecord(index) {
+        editingIndex = index;
+        const log = healthLogs[index];
+        if(!log) return;
+        document.getElementById('recordDateTime').value = `${log.date}T${log.time || '00:00'}`;
+        document.getElementById('foodSelect').value = log.foodIdx !== undefined ? log.foodIdx : -1;
+        document.getElementById('amount').value = log.amount || 0;
+        document.getElementById('poopLength').value = log.poop || 0;
+        document.getElementById('formTitle').innerText = "⚠️ 記録を修正中";
+        document.getElementById('saveBtn').innerText = "上書き保存する";
+        document.getElementById('cancelBtn').style.display = "block";
+        document.getElementById('inputCard').classList.add('edit-active');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function deleteRecord(index) {
+        if(confirm('消去しますか？')) {
+            healthLogs.splice(index, 1);
+            localStorage.setItem('healthLogs', JSON.stringify(healthLogs));
+            renderHistory();
+        }
+    }
+
+    function cancelEdit() {
+        editingIndex = -1;
+        resetForm();
+    }
+
+    function resetForm() {
+        document.getElementById('formTitle').innerText = "📝 記録入力";
+        document.getElementById('saveBtn').innerText = "この内容で保存する";
+        document.getElementById('cancelBtn').style.display = "none";
+        document.getElementById('inputCard').classList.remove('edit-active');
+        document.getElementById('amount').value = "";
+        document.getElementById('poopLength').value = "";
+        setCurrentDateTime();
+    }
+
+    function renderHistory() {
+        const list = document.getElementById('historyList');
+        if(!list) return;
+        list.innerHTML = '';
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0];
+        
+        try {
+            for (let i = 0; i < 31; i++) {
+                const d = new Date();
+                d.setDate(now.getDate() - i);
+                const dateStr = d.toISOString().split('T')[0];
+                const dayLogs = healthLogs
+                    .map((l, idx) => ({...l, originalIndex: idx}))
+                    .filter(l => l.date === dateStr)
+                    .sort((a, b) => (a.time || "00:00").localeCompare(b.time || "00:00"));
+
+                if (dayLogs.length === 0 && i > 7) continue;
+
+                const totalKcal = dayLogs.reduce((sum, l) => sum + (Number(l.kcal) || 0), 0).toFixed(0);
+                const totalPoop = dayLogs.reduce((sum, l) => sum + (Number(l.poop) || 0), 0).toFixed(1);
+                const isToday = dateStr === todayStr ? 'today-row' : '';
+
+                let entriesHtml = dayLogs.map(l => `
+                    <div class="entry-item">
+                        <div class="entry-info">
+                            <b>${l.time || '--:--'}</b> ${l.detail || '記録'} 
+                            <span style="color:#888;">(${(Number(l.kcal) || 0).toFixed(0)}kcal)</span>
+                        </div>
+                        <div class="entry-actions">
+                            <button class="btn-edit" onclick="editRecord(${l.originalIndex})">修正</button>
+                            <button class="btn-delete" onclick="deleteRecord(${l.originalIndex})">消去</button>
+                        </div>
+                    </div>
+                `).join('');
+
+                let gCalLink = '';
+                if (dayLogs.length > 0) {
+                    const title = `【タマ日報】${totalKcal}kcal / 💩${totalPoop}cm`;
+                    const gDate = dateStr.replace(/-/g, '');
+                    let details = "■本日の内訳\n";
+                    dayLogs.forEach(l => { details += `・${l.time}：${l.detail || '記録'}\n`; });
+                    const gUrl = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${gDate}/${gDate}&details=${encodeURIComponent(details)}&sf=true&output=xml`;
+                    gCalLink = `<a href="${gUrl}" target="_blank" class="gcal-btn">Googleカレンダーに同期</a>`;
+                }
+
+                list.innerHTML += `
+                    <div class="day-group ${isToday}">
+                        <div class="day-header">
+                            <div class="day-date">${dateStr}</div>
+                            <div class="day-total">${totalKcal} kcal / 💩${totalPoop} cm</div>
+                        </div>
+                        <div class="day-entries">${entriesHtml || '<div style="font-size:0.7rem; color:#666;">記録なし</div>'}</div>
+                        ${gCalLink}
+                    </div>
+                `;
+            }
+        } catch (err) {
+            console.error("Render error", err);
+            list.innerHTML = '<p style="color:red;">表示エラーが発生しました。データを初期化してください。</p>';
+        }
+    }
+
+    function emergencyReset() {
+        if(confirm('すべてのデータを消去しますか？（消えたデータは戻りません）')) {
+            localStorage.clear();
+            location.reload();
+        }
+    }
+
+    window.onload = init;
+</script>
+</body>
+</html>
